@@ -96,7 +96,7 @@ function toggleDealerMode(room, ws) {
     broadcastToRoom(room, "update_table", getSanitizedState(room));
 }
 
-function startRound(room) {
+function startRound(room, customBet = 100) { // On ajoute un paramètre par défaut
     if (!room || room.players.length === 0) return;
 
     room.status = "playing";
@@ -106,7 +106,8 @@ function startRound(room) {
     
     room.players.forEach(p => {
         p.hand = [];
-        p.bet = 100; // Mise automatique par défaut pour le MVP
+        // 🟢 Utilise la mise envoyée par le client, ou 100 par défaut
+        p.bet = customBet; 
     });
 
     // Distribution initiale : 2 cartes par joueur, 1 pour le croupier

@@ -41,7 +41,7 @@ wss.on('connection', (ws) => {
                     break;
 
                 case 'start_round':
-                    game.startRound(room);
+                    game.startRound(room, data.bet);
                     break;
 
                 case 'hit':
