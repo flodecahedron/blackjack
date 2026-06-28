@@ -4,19 +4,19 @@
  * Crée un paquet standard de 52 cartes
  */
 function createDeck() {
-    const suits = ['♠', '♥', '♦', '♣'];
+    const suits = ['spades', 'hearts', 'diamonds', 'clubs'];
     const values = [
         { name: '2', val: 2 }, { name: '3', val: 3 }, { name: '4', val: 4 },
         { name: '5', val: 5 }, { name: '6', val: 6 }, { name: '7', val: 7 },
         { name: '8', val: 8 }, { name: '9', val: 9 }, { name: '10', val: 10 },
-        { name: 'J', val: 10 }, { name: 'Q', val: 10 }, { name: 'K', val: 10 },
-        { name: 'A', val: 11 }
+        { name: 'jack', val: 10 }, { name: 'queen', val: 10 }, { name: 'king', val: 10 },
+        { name: 'ace', val: 11 }
     ];
     
     let deck = [];
     for (let suit of suits) {
         for (let v of values) {
-            deck.push({ text: `${v.name}${suit}`, value: v.val, name: v.name });
+            deck.push({ text: `${v.name}_of_${suit}`, value: v.val, name: v.name });
         }
     }
     return deck;
