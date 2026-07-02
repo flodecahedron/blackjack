@@ -43,7 +43,9 @@ function getSanitizedState(room) {
             hand: p.hand,
             score: calculateScore(p.hand),
             bet: p.bet,
-            chips: p.chips
+            chips: p.chips,
+            lastOutcome: p.lastOutcome || null,
+            lastReward: p.lastReward || 0
         }))
     };
 }
@@ -96,7 +98,7 @@ function toggleDealerMode(room, ws) {
     broadcastToRoom(room, "update_table", getSanitizedState(room));
 }
 
-function startRound(room, customBet = 100) { // On ajoute un paramètre par défaut
+function startRound(room, customBet = 100) {
     if (!room || room.players.length === 0) return;
 
     room.status = "playing";
@@ -106,11 +108,11 @@ function startRound(room, customBet = 100) { // On ajoute un paramètre par déf
     
     room.players.forEach(p => {
         p.hand = [];
-        // 🟢 Utilise la mise envoyée par le client, ou 100 par défaut
         p.bet = customBet; 
+        p.lastOutcome = null; // Réinitialisation pour la nouvelle manche
+        p.lastReward = 0;
     });
 
-    // Distribution initiale : 2 cartes par joueur, 1 pour le croupier
     for (let i = 0; i < 2; i++) {
         room.players.forEach(p => p.hand.push(room.deck.pop()));
     }
@@ -188,7 +190,7 @@ function resolveRound(room) {
     const dealerPlayer = room.players.find(p => p.id === room.dealerType);
 
     room.players.forEach(p => {
-        if (p.id === room.dealerType) return; // Le joueur-croupier ne joue pas contre lui-même
+        if (p.id === room.dealerType) return;
 
         const playerScore = calculateScore(p.hand);
         let outcome = "push";
@@ -198,19 +200,27 @@ function resolveRound(room) {
         else if (playerScore > dealerScore) outcome = "win";
         else if (playerScore < dealerScore) outcome = "lose";
 
-        // Transfert des jetons
+        let rewardChange = 0;
+
+        // Transfert des jetons et calcul du gain/perte exact
         if (room.dealerType === "AI") {
-            if (outcome === "win") p.chips += p.bet;
-            if (outcome === "lose") p.chips -= p.bet;
+            if (outcome === "win") { p.chips += p.bet; rewardChange = p.bet; }
+            if (outcome === "lose") { p.chips -= p.bet; rewardChange = -p.bet; }
         } else if (dealerPlayer) {
             if (outcome === "win") {
                 p.chips += p.bet;
                 dealerPlayer.chips -= p.bet;
+                rewardChange = p.bet;
             } else if (outcome === "lose") {
                 p.chips -= p.bet;
                 dealerPlayer.chips += p.bet;
+                rewardChange = -p.bet;
             }
         }
+        
+        // On stocke le résultat pour l'envoyer au client Godot
+        p.lastOutcome = outcome;
+        p.lastReward = rewardChange;
     });
 
     broadcastToRoom(room, "update_table", getSanitizedState(room));
