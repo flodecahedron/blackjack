@@ -50,7 +50,7 @@ function getSanitizedState(room) {
     };
 }
 
-function createRoom(rooms, ws) {
+function createRoom(rooms, ws, playerName, chips) {
     const roomCode = generateRoomCode(rooms);
     rooms[roomCode] = {
         code: roomCode,
@@ -61,11 +61,11 @@ function createRoom(rooms, ws) {
         currentPlayerIndex: 0,
         players: []
     };
-    console.log(`[Room] Table ${roomCode} créée.`);
-    joinRoom(rooms, ws, roomCode);
+    console.log(`[Room] Table ${roomCode} créée par ${playerName}.`);
+    joinRoom(rooms, ws, roomCode, playerName, chips);
 }
 
-function joinRoom(rooms, ws, roomCode) {
+function joinRoom(rooms, ws, roomCode, playerName, chips) {
     const code = roomCode ? roomCode.toUpperCase() : "";
     const room = rooms[code];
 
@@ -81,10 +81,10 @@ function joinRoom(rooms, ws, roomCode) {
     ws.roomCode = code;
     room.players.push({
         id: ws.id,
-        name: ws.playerName,
+        name: playerName || "Joueur",
         hand: [],
         bet: 0,
-        chips: 1000,
+        chips: chips !== undefined ? chips : 1000,
         ws: ws
     });
 

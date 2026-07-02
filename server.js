@@ -25,11 +25,11 @@ wss.on('connection', (ws) => {
 
             switch(data.action) {
                 case 'create_room':
-                    game.createRoom(rooms, ws);
+                    game.createRoom(rooms, ws, data.player_name, data.chips);
                     break;
                     
                 case 'join_room':
-                    game.joinRoom(rooms, ws, data.room_code);
+                    game.joinRoom(rooms, ws, data.room_code, data.player_name, data.chips);
                     break;
                     
                 case 'get_table_state':
