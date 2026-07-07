@@ -171,6 +171,15 @@ function handleDouble(room, ws) {
 function handleSplit(room, ws) {
     if (!room || room.status !== "playing") return;
 
+
+    //  Uniquement au premier tirage (exactement 2 cartes) et max 1 split
+    if (activePlayer.hands.length >= 2 || currentHand.cards.length !== 2) return;
+    
+    if (currentHand.cards[0].name !== currentHand.cards[1].name) {
+        ws.send(JSON.stringify({ action: "error", message: "Le split requiert deux cartes identiques." }));
+        return;
+    }
+
     const activePlayer = room.players[room.currentPlayerIndex];
     if (!activePlayer || activePlayer.id !== ws.id) return;
 
