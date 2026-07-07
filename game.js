@@ -112,7 +112,7 @@ function startRound(room, customBet = 100) {
     room.players.forEach(p => {
         p.hands = [{
             cards: [],
-            bet: customBet,
+            bet: Math.min(customBet, p.chips),
             status: "playing"
         }];
         p.currentHandIndex = 0;
