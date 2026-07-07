@@ -42,7 +42,7 @@ function calculateScore(hand) {
     
     for (let card of hand) {
         score += card.value;
-        if (card.name === 'A') aces++;
+        if (card.name === 'ace') aces++;
     }
     
     while (score > 21 && aces > 0) {

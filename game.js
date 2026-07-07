@@ -1,4 +1,3 @@
-// game.js
 const { createDeck, shuffle, calculateScore } = require('./deck');
 
 /**
@@ -27,7 +26,7 @@ function broadcastToRoom(room, action, stateData) {
 }
 
 /**
- * Nettoie l'état de la table avant envoi (supprime les références WebSocket circulaires)
+ * Nettoie l'état de la table avant envoi (Structure multi-mains adaptative)
  */
 function getSanitizedState(room) {
     return {
@@ -40,9 +39,13 @@ function getSanitizedState(room) {
         players: room.players.map(p => ({
             id: p.id,
             name: p.name,
-            hand: p.hand,
-            score: calculateScore(p.hand),
-            bet: p.bet,
+            hands: p.hands.map(h => ({
+                cards: h.cards,
+                score: calculateScore(h.cards),
+                bet: h.bet,
+                status: h.status
+            })),
+            currentHandIndex: p.currentHandIndex,
             chips: p.chips,
             lastOutcome: p.lastOutcome || null,
             lastReward: p.lastReward || 0
@@ -82,8 +85,8 @@ function joinRoom(rooms, ws, roomCode, playerName, chips) {
     room.players.push({
         id: ws.id,
         name: playerName || "Joueur",
-        hand: [],
-        bet: 0,
+        hands: [],
+        currentHandIndex: 0,
         chips: chips !== undefined ? chips : 1000,
         ws: ws
     });
@@ -107,14 +110,18 @@ function startRound(room, customBet = 100) {
     room.currentPlayerIndex = 0;
     
     room.players.forEach(p => {
-        p.hand = [];
-        p.bet = customBet; 
-        p.lastOutcome = null; // Réinitialisation pour la nouvelle manche
+        p.hands = [{
+            cards: [],
+            bet: customBet,
+            status: "playing"
+        }];
+        p.currentHandIndex = 0;
+        p.lastOutcome = null;
         p.lastReward = 0;
     });
 
     for (let i = 0; i < 2; i++) {
-        room.players.forEach(p => p.hand.push(room.deck.pop()));
+        room.players.forEach(p => p.hands[0].cards.push(room.deck.pop()));
     }
     room.dealerHand.push(room.deck.pop());
 
@@ -127,13 +134,72 @@ function handleHit(room, ws) {
     const activePlayer = room.players[room.currentPlayerIndex];
     if (!activePlayer || activePlayer.id !== ws.id) return;
 
-    activePlayer.hand.push(room.deck.pop());
+    const currentHand = activePlayer.hands[activePlayer.currentHandIndex];
+    currentHand.cards.push(room.deck.pop());
     
-    if (calculateScore(activePlayer.hand) > 21) {
-        goToNextPlayer(room);
+    if (calculateScore(currentHand.cards) > 21) {
+        currentHand.status = "busted";
+        goToNextHandOrPlayer(room, activePlayer);
     } else {
         broadcastToRoom(room, "update_table", getSanitizedState(room));
     }
+}
+
+function handleDouble(room, ws) {
+    if (!room || room.status !== "playing") return;
+
+    const activePlayer = room.players[room.currentPlayerIndex];
+    if (!activePlayer || activePlayer.id !== ws.id) return;
+
+    const currentHand = activePlayer.hands[activePlayer.currentHandIndex];
+    
+    if (activePlayer.chips >= currentHand.bet) {
+        currentHand.bet *= 2;
+        currentHand.cards.push(room.deck.pop());
+        
+        if (calculateScore(currentHand.cards) > 21) {
+            currentHand.status = "busted";
+        } else {
+            currentHand.status = "doubled";
+        }
+        goToNextHandOrPlayer(room, activePlayer);
+    } else {
+        ws.send(JSON.stringify({ action: "error", message: "Jetons insuffisants" }));
+    }
+}
+
+function handleSplit(room, ws) {
+    if (!room || room.status !== "playing") return;
+
+    const activePlayer = room.players[room.currentPlayerIndex];
+    if (!activePlayer || activePlayer.id !== ws.id) return;
+
+    const currentHand = activePlayer.hands[activePlayer.currentHandIndex];
+    if (activePlayer.hands.length >= 2 || currentHand.cards.length !== 2) return;
+    
+    // Utilisation de la structure d'objet pour comparer les valeurs intrinsèques des cartes
+    if (currentHand.cards[0].value !== currentHand.cards[1].value) {
+        ws.send(JSON.stringify({ action: "error", message: "Valeurs différentes" }));
+        return;
+    }
+
+    if (activePlayer.chips < currentHand.bet) {
+        ws.send(JSON.stringify({ action: "error", message: "Jetons insuffisants" }));
+        return;
+    }
+
+    const card2 = currentHand.cards.pop();
+    const splitHand = {
+        cards: [card2],
+        bet: currentHand.bet,
+        status: "playing"
+    };
+
+    currentHand.cards.push(room.deck.pop());
+    splitHand.cards.push(room.deck.pop());
+
+    activePlayer.hands.push(splitHand);
+    broadcastToRoom(room, "update_table", getSanitizedState(room));
 }
 
 function handleStand(room, ws) {
@@ -142,16 +208,21 @@ function handleStand(room, ws) {
     const activePlayer = room.players[room.currentPlayerIndex];
     if (!activePlayer || activePlayer.id !== ws.id) return;
 
-    goToNextPlayer(room);
+    activePlayer.hands[activePlayer.currentHandIndex].status = "stood";
+    goToNextHandOrPlayer(room, activePlayer);
 }
 
-function goToNextPlayer(room) {
-    room.currentPlayerIndex++;
-
-    if (room.currentPlayerIndex >= room.players.length) {
-        runDealerTurn(room);
-    } else {
+function goToNextHandOrPlayer(room, activePlayer) {
+    if (activePlayer.currentHandIndex < activePlayer.hands.length - 1) {
+        activePlayer.currentHandIndex++;
         broadcastToRoom(room, "update_table", getSanitizedState(room));
+    } else {
+        room.currentPlayerIndex++;
+        if (room.currentPlayerIndex >= room.players.length) {
+            runDealerTurn(room);
+        } else {
+            broadcastToRoom(room, "update_table", getSanitizedState(room));
+        }
     }
 }
 
@@ -169,7 +240,6 @@ function runDealerTurn(room) {
 
 function handleDealerHit(room, ws) {
     if (!room || room.status !== "dealer_turn" || room.dealerType !== ws.id) return;
-
     room.dealerHand.push(room.deck.pop());
 
     if (calculateScore(room.dealerHand) > 21) {
@@ -192,50 +262,41 @@ function resolveRound(room) {
     room.players.forEach(p => {
         if (p.id === room.dealerType) return;
 
-        const playerScore = calculateScore(p.hand);
-        let outcome = "push";
+        let globalReward = 0;
+        let outcomes = [];
 
-        if (playerScore > 21) outcome = "lose";
-        else if (dealerScore > 21) outcome = "win";
-        else if (playerScore > dealerScore) outcome = "win";
-        else if (playerScore < dealerScore) outcome = "lose";
+        p.hands.forEach(h => {
+            const playerScore = calculateScore(h.cards);
+            let outcome = "push";
 
-        let rewardChange = 0;
+            if (playerScore > 21) outcome = "lose";
+            else if (dealerScore > 21) outcome = "win";
+            else if (playerScore > dealerScore) outcome = "win";
+            else if (playerScore < dealerScore) outcome = "lose";
 
-        if (room.dealerType === "AI") {
-            if (outcome === "win") { 
-                p.chips += p.bet; 
-                rewardChange = p.bet; 
+            outcomes.push(outcome);
+
+            if (room.dealerType === "AI") {
+                if (outcome === "win") { p.chips += h.bet; globalReward += h.bet; }
+                if (outcome === "lose") { p.chips -= h.bet; globalReward -= h.bet; }
+            } else if (dealerPlayer) {
+                if (outcome === "win") {
+                    p.chips += h.bet;
+                    dealerPlayer.chips -= h.bet;
+                    globalReward += h.bet;
+                } else if (outcome === "lose") {
+                    p.chips -= h.bet;
+                    dealerPlayer.chips += h.bet;
+                    globalReward -= h.bet;
+                }
             }
-            if (outcome === "lose") { 
-                p.chips -= p.bet; 
-                rewardChange = -p.bet; 
-            }
-        } else if (dealerPlayer) {
-            if (outcome === "win") {
-                p.chips += p.bet;
-                dealerPlayer.chips -= p.bet;
-                rewardChange = p.bet;
-            } else if (outcome === "lose") {
-                p.chips -= p.bet;
-                dealerPlayer.chips += p.bet;
-                rewardChange = -p.bet;
-            }
-        }
-        
-        // 🟢 SÉCURITÉ BANQUEROUTE SERVEUR : Empêche l'argent négatif ou nul
-        if (p.chips <= 0) {
-            p.chips = 100;
-            console.log(`[Banqueroute] ${p.name} est réinitialisé à 100 T.`);
-        }
-        
-        // Sécurité pour le joueur-croupier s'il fait banqueroute à cause des gains des autres
-        if (dealerPlayer && dealerPlayer.chips <= 0) {
-            dealerPlayer.chips = 100;
-        }
+        });
 
-        p.lastOutcome = outcome;
-        p.lastReward = rewardChange;
+        if (p.chips <= 0) p.chips = 100;
+        if (dealerPlayer && dealerPlayer.chips <= 0) dealerPlayer.chips = 100;
+
+        p.lastOutcome = outcomes[0]; 
+        p.lastReward = globalReward;
     });
 
     broadcastToRoom(room, "update_table", getSanitizedState(room));
@@ -267,6 +328,8 @@ module.exports = {
     startRound,
     handleHit,
     handleStand,
+    handleDouble,
+    handleSplit,
     handleDealerHit,
     handleDealerStand,
     handleDisconnect,

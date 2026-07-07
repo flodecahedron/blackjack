@@ -60,6 +60,14 @@ wss.on('connection', (ws) => {
                     }
                     break;
                 
+                case 'double':
+                    game.handleDouble(room, ws);
+                    break;
+                
+                case 'split':
+                    game.handleSplit(room, ws);
+                    break;
+                
                 default:
                     console.log(`[Réseau] Action inconnue reçue : ${data.action}`);
             }
