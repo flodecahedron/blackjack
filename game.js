@@ -202,10 +202,15 @@ function resolveRound(room) {
 
         let rewardChange = 0;
 
-        // Transfert des jetons et calcul du gain/perte exact
         if (room.dealerType === "AI") {
-            if (outcome === "win") { p.chips += p.bet; rewardChange = p.bet; }
-            if (outcome === "lose") { p.chips -= p.bet; rewardChange = -p.bet; }
+            if (outcome === "win") { 
+                p.chips += p.bet; 
+                rewardChange = p.bet; 
+            }
+            if (outcome === "lose") { 
+                p.chips -= p.bet; 
+                rewardChange = -p.bet; 
+            }
         } else if (dealerPlayer) {
             if (outcome === "win") {
                 p.chips += p.bet;
@@ -218,7 +223,17 @@ function resolveRound(room) {
             }
         }
         
-        // On stocke le résultat pour l'envoyer au client Godot
+        // 🟢 SÉCURITÉ BANQUEROUTE SERVEUR : Empêche l'argent négatif ou nul
+        if (p.chips <= 0) {
+            p.chips = 100;
+            console.log(`[Banqueroute] ${p.name} est réinitialisé à 100 T.`);
+        }
+        
+        // Sécurité pour le joueur-croupier s'il fait banqueroute à cause des gains des autres
+        if (dealerPlayer && dealerPlayer.chips <= 0) {
+            dealerPlayer.chips = 100;
+        }
+
         p.lastOutcome = outcome;
         p.lastReward = rewardChange;
     });
